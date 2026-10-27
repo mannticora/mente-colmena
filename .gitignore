@@ -1,0 +1,17 @@
+# Variables de entorno y secretos
+.env
+.env.*
+!.env.example
+
+# Dependencias
+node_modules/
+
+# Archivos compilados
+dist/
+coverage/
+
+# Logs
+*.log
+
+# Archivos del sistema
+.DS_Store

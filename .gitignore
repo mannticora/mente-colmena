@@ -15,3 +15,9 @@ coverage/
 
 # Archivos del sistema
 .DS_Store
+
+# Metadatos de archivos de Windows
+*:Zone.Identifier
+
+# Caché de compilación de TypeScript
+*.tsbuildinfo

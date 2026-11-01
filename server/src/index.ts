@@ -10,6 +10,7 @@ const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || '*';
 const MAX_PLAYERS = 6;
 const GAME_SECONDS = 300;
 const ANSWERS = ['2', '1', '1'];
+const FINAL_KEY = '211';
 const CLUES: Record<number, string[]> = {
   0: [
     'PISTA A · El panel parpadeó: corto, corto, largo, corto. Solo cuentan los pulsos cortos antes del largo.',
@@ -70,8 +71,12 @@ class MenteColmenaRoom extends Room<GameState> {
       const solvedIndex = this.state.puzzleIndex;
       if (!this.state.solved.includes(solvedIndex)) this.state.solved.push(solvedIndex);
       if (solvedIndex >= ANSWERS.length - 1) {
-        this.state.phase = 'won'; this.state.message = 'Archivo desbloqueado.'; this.stopTimer();
-        this.broadcast('notice', { text: `${this.state.players.get(client.sessionId)?.name || 'El equipo'} ha desbloqueado el archivo NEXO.` });
+      this.state.phase = 'decryption';
+      this.state.message = 'Los tres módulos han sido recuperados. Falta la clave final.';
+
+      this.broadcast('notice', {
+      text: 'Los tres módulos están resueltos. Introduzcan la clave de desclasificación.'
+      });
       } else {
         this.state.puzzleIndex += 1;
         this.state.message = `Módulo ${solvedIndex + 1} resuelto. Nuevo fragmento disponible.`;
@@ -79,6 +84,32 @@ class MenteColmenaRoom extends Room<GameState> {
         this.broadcast('notice', { text: `Módulo ${solvedIndex + 1} resuelto. Avanzando al siguiente archivo.` });
       }
     });
+
+        this.onMessage('decrypt', (client, payload: { key?: unknown }) => {
+      if (this.state.phase !== 'decryption') return;
+
+      const key =
+        typeof payload?.key === 'string'
+          ? payload.key.replace(/\D/g, '')
+          : '';
+
+      if (key !== FINAL_KEY) {
+        client.send('notice', {
+          text: 'Clave incorrecta. Revisen las respuestas de los tres módulos.'
+        });
+        return;
+      }
+
+      this.state.phase = 'won';
+      this.state.message = 'Archivo NEXO desclasificado.';
+
+      this.stopTimer();
+
+      this.broadcast('notice', {
+        text: 'El equipo ha descifrado el archivo NEXO.'
+      });
+    });
+
     this.onMessage('chat', (client, payload: { text?: unknown }) => {
       if (this.state.phase === 'won' || this.state.phase === 'lost') return;
       const text = typeof payload?.text === 'string' ? payload.text.trim().replace(/[<>]/g, '').slice(0, 180) : '';
@@ -125,7 +156,9 @@ class MenteColmenaRoom extends Room<GameState> {
   private startTimer() {
     this.stopTimer();
     this.timer = setInterval(() => {
-      if (this.state.phase !== 'playing') return this.stopTimer();
+      if (!['playing', 'decryption'].includes(this.state.phase)) {
+  return this.stopTimer();
+}
       this.state.timeLeft = Math.max(0, this.state.timeLeft - 1);
       if (this.state.timeLeft <= 0) { this.state.phase = 'lost'; this.state.message = 'El tiempo se agotó.'; this.stopTimer(); this.broadcast('notice', { text: 'Tiempo agotado. La investigación ha terminado.' }); }
     }, 1000);

@@ -4,7 +4,7 @@ import { Activity, ArrowRight, AudioLines, Check, ChevronRight, CircleHelp, Copy
 
 type Player = { sessionId: string; name: string; isHost: boolean; connected: boolean };
 type Puzzle = { title: string; prompt: string; clue: string; index: number };
-type Snapshot = { code: string; hostId: string; phase: 'lobby'|'playing'|'won'|'lost'; players: Player[]; puzzleIndex: number; solved: number[]; timeLeft: number; message: string; submittedBy?: string };
+type Snapshot = { code: string; hostId: string; phase: 'lobby'|'playing'|'decryption'|'won'|'lost'; players: Player[]; puzzleIndex: number; solved: number[]; timeLeft: number; message: string; submittedBy?: string };
 
 const API_URL = (import.meta.env.VITE_GAME_SERVER_URL as string | undefined) || 'http://localhost:2567';
 const PUZZLES: Puzzle[] = [
@@ -21,6 +21,7 @@ function App() {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [sessionId, setSessionId] = useState('');
   const [answer, setAnswer] = useState('');
+  const [finalKey, setFinalKey] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -72,6 +73,13 @@ function App() {
   async function leaveRoom() { try { await room?.leave(); } catch {} setRoom(null); setSnapshot(null); setView('home'); setNotice(''); setChat([]); }
   function startGame() { room?.send('start'); }
   function submitAnswer(e: React.FormEvent) { e.preventDefault(); if (!answer.trim()) return; room?.send('answer', { answer: answer.trim() }); setAnswer(''); }
+  function submitFinalKey(e: React.FormEvent) {
+    e.preventDefault();
+    const cleanKey = finalKey.replace(/\D/g, '');
+    if (cleanKey.length !== 3) return;
+    room?.send('decrypt', { key: cleanKey });
+    setFinalKey('');
+  }
   function sendChat(e: React.FormEvent) { e.preventDefault(); if (!chatDraft.trim()) return; room?.send('chat', { text: chatDraft.trim().slice(0, 180) }); setChatDraft(''); }
   async function copyCode() { if (!snapshot) return; try { await navigator.clipboard.writeText(snapshot.code); setCopied(true); setTimeout(() => setCopied(false), 1400); } catch { setNotice(`Código de sala: ${snapshot.code}`); } }
   const time = `${Math.floor((snapshot?.timeLeft ?? 0)/60).toString().padStart(2,'0')}:${((snapshot?.timeLeft ?? 0)%60).toString().padStart(2,'0')}`;
@@ -82,7 +90,55 @@ function App() {
     {notice && <div className="notice"><Activity size={15}/>{notice}<button onClick={()=>setNotice('')}><X size={14}/></button></div>}
     <div className="game-layout"><section className="main-panel">
       {snapshot.phase === 'lobby' ? <div className="lobby-state"><div className="radar"><div className="radar-ring ring-a"/><div className="radar-ring ring-b"/><div className="radar-ring ring-c"/><div className="radar-center"><Fingerprint size={34}/></div><span className="radar-ping ping-a"/><span className="radar-ping ping-b"/></div><div className="eyebrow centered"><span className="live-dot"/> ESPERANDO AL EQUIPO</div><h2>La investigación<br/>comienza <span className="accent">juntos.</span></h2><p className="muted max-copy">Cada investigador recibirá fragmentos distintos del registro. Compartirlos será la única forma de descifrar el archivo.</p>{isHost ? <button className="primary-button" disabled={snapshot.players.length < 2} onClick={startGame}>INICIAR INVESTIGACIÓN <ArrowRight size={17}/></button> : <div className="waiting-pill"><span className="pulse-dot"/> Esperando a que el anfitrión inicie...</div>}{snapshot.players.length < 2 && <p className="hint">Necesitas al menos 2 investigadores para comenzar.</p>}</div>
-      : snapshot.phase === 'playing' ? <div className="puzzle-state"><div className="puzzle-topline"><span className="eyebrow">MÓDULO {String(snapshot.puzzleIndex+1).padStart(2,'0')} / 03</span><span className="timer"><Activity size={15}/>{time}</span></div><div className="progress-track"><span style={{width:`${snapshot.solved.length/3*100}%`}}/></div><section className="nexo-dossier" aria-label="Expediente cifrado Archivo NEXO"><div className="dossier-top"><div className="dossier-icon"><FileText size={20}/></div><div className="dossier-heading"><span>DOCUMENTO CONFIDENCIAL · NEXO SYSTEMS</span><strong>EXPEDIENTE 07 <i>●</i></strong></div><span className="dossier-lock"><LockKeyhole size={13}/> CIFRADO</span></div><div className="dossier-body"><div className="dossier-meta"><span>REF. NX-07-4A</span><span>UBICACIÓN: NODO 03</span><span>HORA: 02:14</span><span>INTEGRIDAD: PARCIAL</span></div><div className="case-brief"><strong>CASO ABIERTO · TRANSMISIÓN NO AUTORIZADA</strong><p>A las 02:14, el nodo 03 emitió una señal que el sistema registró como un fallo. El registro de seguridad fue dividido en tres módulos antes de que pudiera borrarse. Determinen si fue un accidente o un mensaje deliberado.</p></div><div className="cipher-label">MENSAJE EN HEXADECIMAL / SIN DESCIFRAR</div><div className="cipher-text" aria-label="Mensaje cifrado en hexadecimal">4E 4F 20 46 55 45 20 55 4E 20 46 41 4C 4C 4F<br/>4C 41 20 53 45 C3 91 41 4C 20 53 41 4C 49 C3 93<br/>44 45 4C 20 4E 4F 44 4F 20 30 33</div><div className="redacted-line"><span/><span/><span/></div><p className="dossier-note">Protocolo de acceso: combina las tres respuestas para recuperar la clave 2–1–1. El informe original se revelará al completar todos los módulos.</p></div></section><div className="puzzle-icon"><LockKeyhole size={24}/><span>SEÑAL ENCRIPTADA</span></div><h2>{currentPuzzle.title}</h2><p className="puzzle-prompt">{currentPuzzle.prompt}</p><div className="private-clue"><div className="clue-head"><Fingerprint size={16}/> FRAGMENTO DE EVIDENCIA <span>PERSONAL</span></div><p>{privateClue}</p><small>Comparte esta pista con tu equipo. Cada jugador puede tener información diferente.</small></div><form className="answer-form" onSubmit={submitAnswer}><label htmlFor="answer">RESPUESTA DEL EQUIPO</label><div className="answer-row"><input id="answer" value={answer} onChange={e=>setAnswer(e.target.value)} placeholder="Introduce la cifra..." maxLength={20}/><button className="primary-button" type="submit">ENVIAR <ChevronRight size={17}/></button></div></form><p className="hint"><CircleHelp size={14}/> Hablen entre ustedes antes de enviar una respuesta.</p></div>
+      : snapshot.phase === 'playing' ? <div className="puzzle-state"><div className="puzzle-topline"><span className="eyebrow">MÓDULO {String(snapshot.puzzleIndex+1).padStart(2,'0')} / 03</span><span className="timer"><Activity size={15}/>{time}</span></div><div className="progress-track"><span style={{width:`${snapshot.solved.length/3*100}%`}}/></div><section className="nexo-dossier" aria-label="Expediente cifrado Archivo NEXO"><div className="dossier-top"><div className="dossier-icon"><FileText size={20}/></div><div className="dossier-heading"><span>DOCUMENTO CONFIDENCIAL · NEXO SYSTEMS</span><strong>EXPEDIENTE 07 <i>●</i></strong></div><span className="dossier-lock"><LockKeyhole size={13}/> CIFRADO</span></div><div className="dossier-body"><div className="dossier-meta"><span>REF. NX-07-4A</span><span>UBICACIÓN: NODO 03</span><span>HORA: 02:14</span><span>INTEGRIDAD: PARCIAL</span></div><div className="case-brief"><strong>CASO ABIERTO · TRANSMISIÓN NO AUTORIZADA</strong><p>A las 02:14, el nodo 03 emitió una señal que el sistema registró como un fallo. El registro de seguridad fue dividido en tres módulos antes de que pudiera borrarse. Determinen si fue un accidente o un mensaje deliberado.</p></div><div className="cipher-label">MENSAJE EN HEXADECIMAL / SIN DESCIFRAR</div><div className="cipher-text" aria-label="Mensaje cifrado en hexadecimal">4E 4F 20 46 55 45 20 55 4E 20 46 41 4C 4C 4F<br/>4C 41 20 53 45 C3 91 41 4C 20 53 41 4C 49 C3 93<br/>44 45 4C 20 4E 4F 44 4F 20 30 33</div><div className="redacted-line"><span/><span/><span/></div><p className="dossier-note">Protocolo de acceso: combina las tres respuestas para reconstruir la clave de acceso. El informe original se revelará al completar todos los módulos.</p></div></section><div className="puzzle-icon"><LockKeyhole size={24}/><span>SEÑAL ENCRIPTADA</span></div><h2>{currentPuzzle.title}</h2><p className="puzzle-prompt">{currentPuzzle.prompt}</p><div className="private-clue"><div className="clue-head"><Fingerprint size={16}/> FRAGMENTO DE EVIDENCIA <span>PERSONAL</span></div><p>{privateClue}</p><small>Comparte esta pista con tu equipo. Cada jugador puede tener información diferente.</small></div><form className="answer-form" onSubmit={submitAnswer}><label htmlFor="answer">RESPUESTA DEL EQUIPO</label><div className="answer-row"><input id="answer" value={answer} onChange={e=>setAnswer(e.target.value)} placeholder="Introduce la cifra..." maxLength={20}/><button className="primary-button" type="submit">ENVIAR <ChevronRight size={17}/></button></div></form><p className="hint"><CircleHelp size={14}/> Hablen entre ustedes antes de enviar una respuesta.</p></div>
+      : snapshot.phase === 'decryption' ? (
+        <div className="end-state decryption-state">
+          <div className="end-icon"><LockKeyhole size={36}/></div>
+          <div className="eyebrow centered">PROTOCOLO DE DESCLASIFICACIÓN</div>
+          <h2>LOS TRES MÓDULOS HAN SIDO RECUPERADOS</h2>
+          <p className="muted max-copy">El equipo ha reconstruido los fragmentos del expediente. Introduzcan la secuencia de acceso para recuperar el mensaje original.</p>
+
+          <section className="decrypted-dossier">
+            <div className="dossier-top">
+              <div className="dossier-icon"><LockKeyhole size={20}/></div>
+              <div className="dossier-heading">
+                <span>DOCUMENTO CONFIDENCIAL · NEXO SYSTEMS</span>
+                <strong>EXPEDIENTE 07 <i>●</i></strong>
+              </div>
+              <span className="dossier-lock"><LockKeyhole size={13}/> BLOQUEADO</span>
+            </div>
+            <div className="decrypted-content">
+              <div className="decrypted-stamp">TRES MÓDULOS RECUPERADOS · ACCESO PENDIENTE</div>
+              <h3>Una última operación.</h3>
+              <p>Los registros están completos, pero el archivo sigue protegido. Consulten las pistas compartidas y reconstruyan la clave.</p>
+              <div className="case-result">
+                <span>ESTADO DEL EXPEDIENTE</span>
+                <strong>3 DE 3 MÓDULOS RECUPERADOS</strong>
+              </div>
+            </div>
+          </section>
+
+          <form className="answer-form" onSubmit={submitFinalKey}>
+            <label htmlFor="final-key">CLAVE DE DESCLASIFICACIÓN</label>
+            <div className="answer-row">
+              <input
+                id="final-key"
+                type="text"
+                inputMode="numeric"
+                autoComplete="off"
+                value={finalKey}
+                onChange={e => setFinalKey(e.target.value.replace(/\D/g, '').slice(0, 3))}
+                placeholder="_ _ _"
+                maxLength={3}
+              />
+              <button className="primary-button" type="submit" disabled={finalKey.length !== 3}>
+                DESCIFRAR <ChevronRight size={17}/>
+              </button>
+            </div>
+          </form>
+          <p className="hint"><CircleHelp size={14}/> Comparen sus hallazgos antes de validar la secuencia.</p>
+        </div>
+      )
       : <div className="end-state"><div className={`end-icon ${snapshot.phase==='won'?'won':''}`}>{snapshot.phase==='won'?<Check size={36}/>:<ShieldAlert size={36}/>}</div><div className="eyebrow centered">INFORME DE MISIÓN</div><h2>{snapshot.phase==='won'?'ARCHIVO DESBLOQUEADO':'SEÑAL PERDIDA'}</h2><p className="muted max-copy">{snapshot.phase==='won'?'El equipo combinó las pruebas y recuperó el archivo NEXO. La investigación ha sido completada.':'El tiempo se agotó antes de completar la secuencia. La próxima vez, compartan sus pistas desde el principio.'}</p>{snapshot.phase==='won' && <section className="decrypted-dossier"><div className="dossier-top"><div className="dossier-icon unlocked"><FileText size={20}/></div><div className="dossier-heading"><span>DOCUMENTO DESCLASIFICADO · NEXO SYSTEMS</span><strong>EXPEDIENTE 07 <i>●</i></strong></div><span className="unlocked-label"><Check size={13}/> ABIERTO</span></div><div className="decrypted-content"><div className="decrypted-stamp">INFORME RECUPERADO · CLAVE 2–1–1</div><h3>La señal no fue un fallo.</h3><div className="case-result"><span>MENSAJE ORIGINAL</span><strong>NO FUE UN FALLO. LA SEÑAL SALIÓ DEL NODO 03.</strong></div><p><strong>Conclusión del caso:</strong> a las 02:14, el nodo 03 transmitió un aviso deliberado. El sistema lo etiquetó como error y fragmentó el registro para evitar que una sola persona pudiera reconstruirlo.</p><p>Las respuestas de los tres módulos formaron la clave de acceso. Ningún investigador tenía todas las piezas: el mensaje solo pudo recuperarse al compartir las pistas y combinar la información.</p><div className="report-signature">NEXO SYSTEMS <span>· EXPEDIENTE 07 CERRADO</span></div></div></section>}{isHost && <button className="primary-button" onClick={()=>room?.send('restart')}><RotateCcw size={16}/> VOLVER A INVESTIGAR</button>}{!isHost&&<div className="waiting-pill">Esperando al anfitrión para reiniciar...</div>}</div>}
     </section><aside className="side-panel"><div className="side-title"><Users size={16}/><span>INVESTIGADORES</span><b>{snapshot.players.length}/6</b></div><div className="player-list">{snapshot.players.map((p,i)=><div className="player-row" key={p.sessionId}><div className={`avatar avatar-${i%5}`}>{p.name.slice(0,1).toUpperCase()}</div><div className="player-info"><strong>{p.name}{p.sessionId===sessionId?' (tú)':''}</strong><small>{p.isHost?'ANFITRIÓN':'INVESTIGADOR'}</small></div><span className="player-online" title="Conectado"/></div>)}</div><div className="side-divider"/><div className="side-title"><Radio size={16}/><span>CANAL DEL EQUIPO</span><span className="secure-label"><LockKeyhole size={11}/> SEGURO</span></div><div className="chat-messages">{chat.length===0?<div className="chat-empty"><AudioLines size={22}/><p>Canal abierto.<br/>Comparte tus hallazgos aquí.</p></div>:chat.map((m,i)=><div className="chat-message" key={i}><div><strong>{m.name}</strong><time>{m.time}</time></div><p>{m.text}</p></div>)}</div><form className="chat-form" onSubmit={sendChat}><input value={chatDraft} onChange={e=>setChatDraft(e.target.value)} placeholder="Transmitir mensaje..." maxLength={180}/><button type="submit" aria-label="Enviar mensaje"><ArrowRight size={17}/></button></form><div className="mission-progress"><div className="side-title"><Cpu size={15}/><span>INTEGRIDAD DEL ARCHIVO</span></div><div className="mini-progress"><span style={{width:`${snapshot.solved.length/3*100}%`}}/></div><div className="mini-progress-label"><span>{snapshot.solved.length} DE 3 MÓDULOS</span><span>{Math.round(snapshot.solved.length/3*100)}%</span></div></div></aside></div>
     <footer className="app-footer"><span>MENTE COLMENA <span className="footer-dim">/ PROTOTIPO 0.1</span></span><span><Wifi size={13}/> SESIÓN MULTIJUGADOR <span className="footer-dim">· NEXO SYSTEMS</span></span></footer>

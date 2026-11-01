@@ -167,7 +167,23 @@ class MenteColmenaRoom extends Room<GameState> {
   onDispose() { this.stopTimer(); }
 }
 
-const httpServer = createServer();
-const gameServer = new Server({ transport: new WebSocketTransport({ server: httpServer }) });
+const httpServer = createServer((req, res) => {
+  if (req.url === '/health') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ status: 'ok' }));
+    return;
+  }
+
+  res.writeHead(200, { 'Content-Type': 'text/plain' });
+  res.end('Mente Colmena server is running');
+});
+
+const gameServer = new Server({
+  transport: new WebSocketTransport({ server: httpServer })
+});
+
 gameServer.define('mente_colmena', MenteColmenaRoom);
-httpServer.listen(PORT, () => console.log(`Mente Colmena server listening on http://localhost:${PORT}`));
+
+httpServer.listen(PORT, '0.0.0.0', () => {
+  console.log(`Mente Colmena server listening on port ${PORT}`);
+});
